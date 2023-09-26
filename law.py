@@ -123,6 +123,40 @@ class LawHandler:
             await update.message.reply_text(id_list)
 
 
+    async def search(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+        command = update.message.text
+
+        keyphrase = ""
+
+        if "/search@StrexisNexisBot" in command:
+
+            keyphrase = command[len("/search@StrexisNexisBot "):]
+
+        else:
+
+            keyphrase = command[len("/search "):]
+
+        self.cursor.execute("SELECT * FROM laws")
+        laws = self.cursor.fetchall()
+
+        count = 0
+        results = []
+
+        for law in laws:
+
+            if keyphrase.lower() in law[1].lower():
+
+                count = count + 1
+                results.append("{0}\n\n{1}".format(law[0], law[1]))
+
+        await update.message.reply_text("Found {0} results.".format(count))
+
+        for result in results:
+
+            await update.message.reply_text(result)
+
+
     def close(self):
 
         self.cursor.close()

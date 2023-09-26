@@ -18,6 +18,7 @@ async def strexis_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "/add [CET#] -- add a new law to the record\n"
         "/remove [CET#] -- remove a law from the record\n"
         "/get [CET#] -- get information about a law\n"
+        "/search [term] -- search by keyphrase\n"
         "/list -- list all laws"
     )
 
@@ -61,7 +62,8 @@ def main():
                 CommandHandler("get", law_handler.get),
                 CommandHandler("help", strexis_help),
                 CommandHandler("list", law_handler.list),
-                CommandHandler("remove", law_handler.remove)
+                CommandHandler("remove", law_handler.remove),
+                CommandHandler("search", law_handler.search)
             ],
             ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, law_handler.wait_add)]
         },
