@@ -2,17 +2,18 @@
 
 import io
 import logging
+import random
+import time
 
 import psycopg2
 
-from config import config
-from law import LawHandler, DEFAULT, ADD
+from strexis import StrexisHandler, DEFAULT, ADD
 
 from telegram import ForceReply, Update
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, ConversationHandler, filters
+from telegram.ext import Application, CommandHandler, ContextTypes, CallbackContext, MessageHandler, ConversationHandler, filters
 
 
-async def strexis_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def strexis_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "/add [CET#] -- add a new law to the record\n"
@@ -21,11 +22,6 @@ async def strexis_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "/search [term] -- search by keyphrase\n"
         "/list -- list all laws"
     )
-
-
-async def strexis_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-
-    await update.message.reply_text("StrexisNexis started.")
 
     return DEFAULT
 
@@ -41,7 +37,7 @@ def main():
 
     logger = logging.getLogger(__name__)
 
-    law_handler = LawHandler()
+    strexis_handler = StrexisHandler()
 
     token_file = open("TOKEN", "r", encoding = "utf-8")
     token = token_file.readline()
@@ -55,17 +51,17 @@ def main():
     application = Application.builder().token(token).build()
 
     conversation_handler = ConversationHandler(
-        entry_points = [CommandHandler("start", strexis_start)],
+        entry_points = [CommandHandler("start", strexis_handler.start)],
         states = {
             DEFAULT: [
-                CommandHandler("add", law_handler.add),
-                CommandHandler("get", law_handler.get),
+                CommandHandler("add", strexis_handler.add),
+                CommandHandler("get", strexis_handler.get),
                 CommandHandler("help", strexis_help),
-                CommandHandler("list", law_handler.list),
-                CommandHandler("remove", law_handler.remove),
-                CommandHandler("search", law_handler.search)
+                CommandHandler("list", strexis_handler.list),
+                CommandHandler("remove", strexis_handler.remove),
+                CommandHandler("search", strexis_handler.search)
             ],
-            ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, law_handler.wait_add)]
+            ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, strexis_handler.wait_add)]
         },
         fallbacks = []
     )
@@ -74,7 +70,7 @@ def main():
 
     application.run_polling(allowed_updates = Update.ALL_TYPES)
 
-    law_handler.close()
+    strexis_handler.close()
 
 
 if __name__ == "__main__":

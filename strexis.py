@@ -1,17 +1,43 @@
-from telegram.ext import ContextTypes, ConversationHandler, MessageHandler, filters
+from telegram.ext import CallbackContext, ContextTypes, ConversationHandler, MessageHandler, filters
 from telegram import ForceReply, Update
 
-from config import config
+from configparser import ConfigParser
 import psycopg2
 
 DEFAULT, ADD = range(2)
+AD, INFO, PSA = range(3)
 
-class LawHandler:
+def config (filename, section):
+
+    parser = ConfigParser()
+    parser.read(filename)
+
+    settings = {}
+    
+    if parser.has_section(section):
+
+        params = parser.items(section)
+
+        for param in params:
+
+            settings[param[0]] = param[1]
+
+    else:
+
+        raise Exception(f"Section \"%(section)s\" not found in %(filename)s")
+
+    return settings
+
+
+class StrexisHandler:
 
     def __init__(self):
 
-        params = config()
-        self.connection = psycopg2.connect(**params)
+        filename = "config.ini"
+
+        db = config(filename, "postgresql")
+
+        self.connection = psycopg2.connect(**db)
         self.cursor = self.connection.cursor()        
 
         self.cursor.execute(
@@ -20,6 +46,80 @@ class LawHandler:
                 "content text NOT NULL"
             ")"
         )
+
+        self.cursor.execute(
+            "DO $$ BEGIN"
+            "    CREATE TYPE adtype AS ENUM ('ad', 'info', 'psa');"
+            "EXCEPTION"
+            "   WHEN duplicate_object THEN null;"
+            "END $$;"
+        )
+
+        self.cursor.execute(
+            "CREATE TABLE IF NOT EXISTS ads ("
+                "id SERIAL PRIMARY KEY,"
+                "type adtype NOT NULL,"
+                "content text NOT NULL"
+            ")"
+        )
+
+        self.connection.commit()
+
+        tg = config(filename, "telegram")
+
+        self.chat_id = tg["chat_id"]
+        self.adfreq = int(tg["ad_frequency"])
+
+        self.current_ad = 0
+        self.advertising = False
+
+
+    async def start(self, update: Update, context: CallbackContext):
+
+        await update.message.reply_text("StrexisNexis started.")
+
+        if not self.advertising:
+
+            context.job_queue.run_repeating(self.advertise, interval = self.adfreq, first = 0,
+                chat_id = update.message.chat_id)
+
+            self.advertising = True
+
+        return DEFAULT
+
+
+    async def advertise(self, context: CallbackContext): 
+
+        self.cursor.execute("SELECT * FROM ads WHERE id = %s", (self.current_ad + 1,))
+        ad = self.cursor.fetchone()
+
+        header = ""
+        match ad[1]:
+
+            case "ad":
+
+                header = "ADVERTISEMENT"
+
+            case "info":
+
+                header = "INFORMATION"
+
+            case "psa":
+
+                header = "PUBLIC SERVICE ANNOUNCEMENT"
+
+        header = "----- {0} -----".format(header)
+
+        body = ad[2]
+
+        message = header + "\n\n" + body
+
+        await context.bot.send_message(chat_id = self.chat_id, text = message)
+
+        self.cursor.execute("SELECT count(*) FROM ads")
+        ad_count = self.cursor.fetchone()[0]
+
+        self.current_ad = (self.current_ad + 1) % ad_count
 
 
     async def add(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -82,6 +182,8 @@ class LawHandler:
 
         await update.message.reply_text(content)
 
+        return DEFAULT
+
 
     async def remove(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -102,6 +204,8 @@ class LawHandler:
 
         await update.message.reply_text(f"{law_id} removed from database.")
 
+        return DEFAULT
+
 
     async def list(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
 
@@ -121,6 +225,8 @@ class LawHandler:
         else:
 
             await update.message.reply_text(id_list)
+
+        return DEFAULT
 
 
     async def search(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -155,6 +261,8 @@ class LawHandler:
         for result in results:
 
             await update.message.reply_text(result)
+
+        return DEFAULT
 
 
     def close(self):
